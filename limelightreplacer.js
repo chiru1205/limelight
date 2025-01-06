@@ -1,11 +1,11 @@
-// Akamai Video Player Replacer with HLS.js and Reload Handling
+// Akamai Video Player Replacer with HLS.js and MutationObserver Fix
 (function () {
     const config = {
         selectors: {
             playerContainer: '.limelight-player',
             appVideo: 'app-video', // Starting point for DOM traversal
             playerWrapper: '.video-player-wrap', // Wrapper for the video player
-            videoElement: 'video' // Video element
+            videoElement: 'video' // Video element            
         },
         debug: true,
         apiEndpoint: 'https://localhost:5000/api/get-video-url',
@@ -45,6 +45,9 @@
         }
     }
     async function replaceAppVideoNode(appVideoElement) {
+        if (appVideoElement.hasAttribute('data-processed')) {
+            return; // Skip already processed nodes
+        }
         const videoElement = appVideoElement.querySelector(config.selectors.videoElement);
         if (!videoElement) {
             log('No video element found in app-video node');
@@ -81,6 +84,8 @@
             log('HLS is not supported on this browser');
             appVideoElement.innerHTML = '<div style="color: red;">HLS is not supported on this browser</div>';
         }
+        // Mark this node as processed
+        appVideoElement.setAttribute('data-processed', 'true');
     }
     function processAppVideos() {
         const appVideoElements = document.querySelectorAll(config.selectors.appVideo);
@@ -93,12 +98,14 @@
         processAppVideos();
         log('Initial processing complete');
     });
-    window.addEventListener('load', () => {
-        processAppVideos();
-        log('Reprocessing videos on page load');
-    });
-    const observer = new MutationObserver(() => {
-        processAppVideos();
+    const observer = new MutationObserver(async (mutations) => {
+        for (const mutation of mutations) {
+            mutation.addedNodes.forEach(async (node) => {
+                if (node.nodeType === Node.ELEMENT_NODE && node.matches(config.selectors.appVideo)) {
+                    await replaceAppVideoNode(node);
+                }
+            });
+        }
         log('Reprocessing videos on DOM change');
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
