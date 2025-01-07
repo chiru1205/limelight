@@ -12,7 +12,9 @@
         },
         debug: true,
         jsonConfigUrl: 'https://chiru1205.github.io/limelight/akamaitest.json',
-        hlsLibraryUrl: 'https://cdn.jsdelivr.net/npm/hls.js@latest'
+        hlsLibraryUrl: 'https://cdn.jsdelivr.net/npm/hls.js@latest',
+        jsonLoaded : false,
+        jsonConfig : null //cached JSON Configuration
     };
     const log = (...args) => {
         if (config.debug) {
@@ -34,12 +36,18 @@
     }
 
     async function loadJsonConfig() {
+        if(config.jsonLoaded){
+            log('JSON Configuration already loaded');
+            return config.jsonConfig
+        }
         try {
             const response = await fetch(config.jsonConfigUrl);
             if (!response.ok) {
                 throw new Error(`Failed to load JSON configuration: ${response.status}`);
             }
             const data = await response.json();
+            config.jsonLoaded = true;
+            config.jsonConfig = data;
             log('JSON configuration loaded:', data);
             return data;
         } catch (error) {
@@ -136,7 +144,7 @@
        log('Initial processing complete');
     });
     const observer = new MutationObserver(async (mutations) => {
-        const jsonConfig = await loadJsonConfig();
+        const jsonConfig = config.jsonConfig || await loadJsonConfig();
         if (!jsonConfig) {
             log('Failed to load JSON configuration during DOM change. Skipping.');
             return;
