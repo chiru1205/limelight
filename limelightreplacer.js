@@ -136,10 +136,15 @@
        log('Initial processing complete');
     });
     const observer = new MutationObserver(async (mutations) => {
+        const jsonConfig = await loadJsonConfig();
+        if (!jsonConfig) {
+            log('Failed to load JSON configuration during DOM change. Skipping.');
+            return;
+        }
         for (const mutation of mutations) {
             mutation.addedNodes.forEach(async (node) => {
                 if (node.nodeType === Node.ELEMENT_NODE && node.matches(config.selectors.appVideo)) {
-                    await replaceAppVideoNode(node);
+                    await replaceAppVideoNode(node,jsonConfig);
                 }
             });
         }
