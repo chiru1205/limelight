@@ -88,7 +88,7 @@
             appVideoElement.innerHTML = '<div style="color: red;">Error: Video data not found</div>';
             return;
         }
-      
+        const videoData = jsonConfig[videoId];
         const { manifestUrl, posterUrl, captions} = videoData;
         await loadHlsLibrary();
         const hlsPlayer = document.createElement('video');
