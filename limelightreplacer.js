@@ -5,10 +5,13 @@
             playerContainer: '.limelight-player',
             appVideo: 'app-video', // Starting point for DOM traversal
             playerWrapper: '.video-player-wrap', // Wrapper for the video player
-            videoElement: 'video' // Video element            
+            videoElement: 'video', // Video element
+            idPrefix: '[id^="c_"]',
+            playerIdPrefix: '[player_id^="video_"]',
+            dataVideoOrMedia: '[data-video-id], [data-media-id]', // Data attributes for media ID           
         },
         debug: true,
-        apiEndpoint: 'https://localhost:5000/api/get-video-url',
+        jsonConfigUrl: 'https://chiru1205.github.io/limelight/akamaitest.json',
         hlsLibraryUrl: 'https://cdn.jsdelivr.net/npm/hls.js@latest'
     };
     const log = (...args) => {
@@ -29,22 +32,41 @@
             document.head.appendChild(script);
         });
     }
-    async function fetchVideoData(mediaId) {
+
+    async function loadJsonConfig() {
         try {
-            const url = `${config.apiEndpoint}?mediaId=${encodeURIComponent(mediaId)}`;
-            const response = await fetch(url);
+            const response = await fetch(config.jsonConfigUrl);
             if (!response.ok) {
-                throw new Error(`API response status: ${response.status}`);
+                throw new Error(`Failed to load JSON configuration: ${response.status}`);
             }
             const data = await response.json();
-            log('Video data fetched:', data);
+            log('JSON configuration loaded:', data);
             return data;
         } catch (error) {
-            log('Error fetching video data:', error);
+            log('Error loading JSON configuration:', error);
             return null;
         }
     }
-    async function replaceAppVideoNode(appVideoElement) {
+
+    function extractVideoId(element, jsonConfig) {
+        const methods = [
+            (el) => el.closest(config.selectors.idPrefix)?.id.replace('c_', ''),
+            (el) => el.closest(config.selectors.playerIdPrefix)?.getAttribute('player_id')?.replace('video_', ''),
+            (el) => el.querySelector(config.selectors.videoElement)?.id?.split('_')?.[1],
+            (el) => el.closest(config.selectors.dataVideoOrMedia)?.getAttribute('data-video-id') ||
+                    el.closest(config.selectors.dataVideoOrMedia)?.getAttribute('data-media-id'),
+        ];
+        for (const method of methods) {
+            const id = method(element);
+            if (id && jsonConfig[id]) {
+                log('Found video ID:', id);
+                return id;
+            }
+        }
+        log('No valid video ID found');
+        return null;
+    }
+    async function replaceAppVideoNode(appVideoElement, jsonConfig) {
         if (appVideoElement.hasAttribute('data-processed')) {
             return; // Skip already processed nodes
         }
@@ -53,23 +75,33 @@
             log('No video element found in app-video node');
             return;
         }
-        const videoId = videoElement.id.match(/video_([a-zA-Z0-9-]+)_video_/)?.[1];
+        const videoId = extractVideoId(appVideoElement, jsonConfig);
         if (!videoId) {
-            log('No valid video ID found');
+            appVideoElement.innerHTML = '<div style="color: red;">Error: Video data not found</div>';
             return;
         }
-        const videoData = await fetchVideoData(videoId);
-        if (!videoData) {
-            appVideoElement.innerHTML = '<div style="color: red;">Error: Failed to fetch video data</div>';
-            return;
-        }
-        const { manifestUrl, posterUrl } = videoData;
+      
+        const { manifestUrl, posterUrl, captions} = videoData;
         await loadHlsLibrary();
         const hlsPlayer = document.createElement('video');
         hlsPlayer.style.cssText = `width: 100%; height: 411px;`;
         hlsPlayer.controls = true;
         hlsPlayer.autoplay = true;
         hlsPlayer.poster = posterUrl || '';
+      
+        // Add captions dynamically
+       if (captions && captions.length) {
+        captions.forEach(({ url, language, label }) => {
+            if(url && url.length){
+                const trackElement = document.createElement('track');
+                trackElement.src = url;
+                trackElement.kind = 'subtitles';
+                trackElement.srclang = language;
+                trackElement.label = label;
+                hlsPlayer.appendChild(trackElement);
+            }           
+        });
+        }
         appVideoElement.innerHTML = ''; // Clear content
         appVideoElement.appendChild(hlsPlayer);
         if (Hls.isSupported()) {
@@ -87,16 +119,21 @@
         // Mark this node as processed
         appVideoElement.setAttribute('data-processed', 'true');
     }
-    function processAppVideos() {
+    function processAppVideos(jsonConfig) {
         const appVideoElements = document.querySelectorAll(config.selectors.appVideo);
         appVideoElements.forEach(async (appVideoElement) => {
-            await replaceAppVideoNode(appVideoElement);
+            await replaceAppVideoNode(appVideoElement,jsonConfig);
         });
     }
     document.addEventListener('DOMContentLoaded', async () => {
         await loadHlsLibrary();
-        processAppVideos();
-        log('Initial processing complete');
+        const jsonConfig = await loadJsonConfig();
+       if (!jsonConfig) {
+           log('Failed to load JSON configuration. Exiting.');
+           return;
+       }
+       processAppVideos(jsonConfig);
+       log('Initial processing complete');
     });
     const observer = new MutationObserver(async (mutations) => {
         for (const mutation of mutations) {
